@@ -2,61 +2,62 @@ import pandas as pd
 import numpy as np
 import json
 from typing import List, Optional
+import networkx as nx
 
-def compute_adjusted_cross_correlation(stock1_data: pd.DataFrame, stock2_data: pd.DataFrame, 
-                                       start_date: Optional[str] = None, end_date: Optional[str] = None, 
-                                       decay_factor: float = 0.95) -> List[dict]:
-    correlations = []
 
-    if start_date:
-        stock1_data = stock1_data[stock1_data['Date'] >= pd.to_datetime(start_date)]
-        stock2_data = stock2_data[stock2_data['Date'] >= pd.to_datetime(start_date)]
-    if end_date:
-        stock1_data = stock1_data[stock1_data['Date'] <= pd.to_datetime(end_date)]
-        stock2_data = stock2_data[stock2_data['Date'] <= pd.to_datetime(end_date)]
-
-    dates1 = stock1_data['Date'].values
-    dates2 = stock2_data['Date'].values
-    prices1 = stock1_data[['Open', 'High', 'Low', 'Close']].values
-    prices2 = stock2_data[['Open', 'High', 'Low', 'Close']].values
-    
-    for idx1, date1 in enumerate(dates1):
-        day_data1 = prices1[idx1]
-
-        for idx2, date2 in enumerate(dates2):
-            if date2 >= date1:
-                day_data2 = prices2[idx2]
-
-                correlation = np.corrcoef(day_data1, day_data2)[0, 1]
-                
-                days_apart = abs((date2 - date1).astype('timedelta64[D]').astype(int))
-                adjusted_correlation = correlation * (decay_factor ** days_apart)
-
-                correlations.append({
-                    "Date1": pd.to_datetime(date1).strftime('%Y-%m-%d'),
-                    "Stock1": stock1_data['Ticker'].iloc[0],
-                    "Date2": pd.to_datetime(date2).strftime('%Y-%m-%d'),
-                    "Stock2": stock2_data['Ticker'].iloc[0],
-                    "Correlation": adjusted_correlation
-                })
-
-    return correlations
-
-def create_cross_date_correlation_graph(dataset, stock_list: List[str], 
-                                        start_date: Optional[str] = None, end_date: Optional[str] = None, 
-                                        output_file: str = "correlation_data.json"):
+def compute_daily_correlation(stock1_data: pd.DataFrame, stock2_data: pd.DataFrame, date: str) -> Optional[float]:
     """
-    Generates a cross-date correlation graph of daily adjusted correlations between multiple stocks and stores it in a JSON file.
+    Computes the correlation between two stocks on a specific day using 'Open', 'High', 'Low', and 'Close' values.
 
     Args:
-        dataset (NASDAQDataset): NASDAQDataset instance containing loaded stock data.
-        stock_list (List[str]): List of stock tickers to include in the graph.
-        start_date (str, optional): Start date for filtering data in 'YYYY-MM-DD' format.
-        end_date (str, optional): End date for filtering data in 'YYYY-MM-DD' format.
-        output_file (str): Name of the JSON file to store the results.
-    """
-    all_correlations = []
+        stock1_data (pd.DataFrame): DataFrame for stock 1 with 'Date', 'Open', 'High', 'Low', and 'Close' columns.
+        stock2_data (pd.DataFrame): DataFrame for stock 2 with 'Date', 'Open', 'High', 'Low', and 'Close' columns.
+        date (str): The date for which to compute the correlation.
 
+    Returns:
+        Optional[float]: Correlation for the specific day or None if data is insufficient.
+    """
+    #Filter data for the specified date
+    stock1_data = stock1_data[stock1_data['Date'] == pd.to_datetime(date)]
+    stock2_data = stock2_data[stock2_data['Date'] == pd.to_datetime(date)]
+    
+    #Ensure we have data for both stocks on the specified date
+    if stock1_data.empty or stock2_data.empty:
+        return None
+
+    #Extract 'Open', 'High', 'Low', 'Close' values from the last day for each stock
+    features1 = stock1_data[['Open', 'High', 'Low', 'Close']].values.flatten()
+    features2 = stock2_data[['Open', 'High', 'Low', 'Close']].values.flatten()
+
+    #Compute correlation between the feature sets of the two stocks
+    correlation = np.corrcoef(features1, features2)[0, 1]
+
+    return correlation
+
+
+def create_daily_graph(dataset, stock_list, date, days_lookback=30):
+    """
+    Generates a graph for a specific date with stocks as nodes and their correlation as edge weights.
+
+    Args:
+        dataset (NASDAQDataset): Dataset instance containing loaded stock data.
+        stock_list (List[str]): List of stock tickers to include.
+        date (str): The specific date for which to create the graph.
+        days_lookback (int): Number of days back to use as node features.
+
+    Returns:
+        G (networkx.Graph): Graph of stocks with correlations as edge weights.
+    """
+    #Create graph
+    G = nx.Graph()
+    
+    #Add nodes with historical closing prices as features
+    for stock in stock_list:
+        stock_data = dataset.get_ticker_data(stock)
+        stock_data = stock_data[stock_data['Date'] <= date].tail(days_lookback)  # Last `days_lookback` days
+        G.add_node(stock, features=stock_data['Close'].values.tolist())
+    
+    #Add edges with correlation based on the final closing day
     for i, stock1 in enumerate(stock_list):
         stock1_data = dataset.get_ticker_data(stock1)
         
@@ -64,8 +65,11 @@ def create_cross_date_correlation_graph(dataset, stock_list: List[str],
             stock2 = stock_list[j]
             stock2_data = dataset.get_ticker_data(stock2)
             
-            correlations = compute_adjusted_cross_correlation(stock1_data, stock2_data, start_date, end_date)
-            all_correlations.extend(correlations)
+            #Compute correlation for the last available closing prices only
+            correlation = compute_daily_correlation(stock1_data, stock2_data, date)
+            print(correlation)
+            
+            if correlation is not None:
+                G.add_edge(stock1, stock2, weight=correlation)
     
-    with open(output_file, "w") as f:
-        json.dump(all_correlations, f, indent=4)
+    return G
