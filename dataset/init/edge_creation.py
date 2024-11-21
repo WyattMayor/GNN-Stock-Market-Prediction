@@ -35,7 +35,7 @@ def compute_daily_correlation(stock1_data: pd.DataFrame, stock2_data: pd.DataFra
     return correlation
 
 
-def create_daily_graph(dataset, stock_list, date, days_lookback=30):
+def create_daily_graph(dataset, stock_list, date, days_lookback = 30):
     """
     Generates a graph for a specific date with stocks as nodes and their correlation as edge weights.
 
