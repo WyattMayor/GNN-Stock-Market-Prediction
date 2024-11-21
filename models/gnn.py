@@ -157,46 +157,8 @@ def eval_gcn(model, test_loader):
 
             # Compute the Mean Absolute Percentage Error
 
-            mape = torch.mean(torch.abs(out - data.y)/data.y).item()
+            mape = torch.mean(100 * torch.abs(out - data.y)/data.y).item()
 
             total_mape += mape
 
     return total_mape/len(test_loader)
-              
-
-
-
-# %%
-data_path = '/Users/vivek/Documents/PhD/UIUC/Fall24/CS598/Project/GNN-Stock-Market-Prediction/dataset/graphs'
-data_list = [os.path.join(data_path, file) for file in os.listdir(data_path)]
-# %%
-
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-stock_model = StockGNN().to(device)
-optimizer = torch.optim.Adam(stock_model.parameters(), lr=0.005, weight_decay=1e-5)
-
-
-# %%
-train_loader = gnn_data_obj(data_list[0:1000])
-test_loader = gnn_data_obj(data_list[1000:])
-
-# %%
-
-train_loss, test_loss = train_gnn(stock_model, optimizer, train_loader, test_loader, 300)
-
-# %%
-
-# Plot the training and validation loss
-
-# plt.plot(train_loss, label = 'Training Loss')
-plt.plot(test_loss, label = 'Test Loss')
-plt.xlabel('Epochs')
-plt.ylabel('Mean Absolute Percentage Error')
-plt.show()
-
-# %%
-
-pred = stock_model(train_loader[0])
-label = test_loader[0].y
-
-abs_perc_error = torch.mean(100 * (torch.abs(pred - label)/label))

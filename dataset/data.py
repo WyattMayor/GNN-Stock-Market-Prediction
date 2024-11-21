@@ -134,11 +134,5 @@ class NASDAQDataset():
             
             print(f"Graph for {start_date} already exists!")
             return nx.read_gml(filename)
-
-
-# stock_data = NASDAQDataset(stock_path, meta_path, nasdaq100_path, "2014-01-01")
-
-# start_date = stock_data.data['AAPL'].index[30]
-
 # %%
 
