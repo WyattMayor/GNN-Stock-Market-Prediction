@@ -4,6 +4,7 @@ import os
 import torch
 from sklearn.preprocessing import MinMaxScaler
 from torch_geometric.nn import GCNConv
+from torch_geometric.nn import GATConv
 from torch_geometric.data import Data
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
@@ -72,17 +73,17 @@ def gnn_data_obj(data_list):
 
         return data_obj_list
 
-class StockGNN(torch.nn.Module):
+class StockGCN(torch.nn.Module):
 
-    # A 2-layer GCN with an MLP head for node regression
+    # A 3-layer GCN for node regression
     
     def __init__(self):
-        super(StockGNN, self).__init__()
+        
+        super(StockGCN, self).__init__()
 
         self.conv1 = GCNConv(30, 64)
-        self.conv2 = GCNConv(64, 128)
-        self.conv3 = GCNConv(128, 128)
-        self.lin1 = torch.nn.Linear(128, 1)
+        self.conv2 = GCNConv(64, 64)
+        self.conv3 = GCNConv(64, 1)
     
     def forward(self, data):
 
@@ -98,16 +99,42 @@ class StockGNN(torch.nn.Module):
         
         x = self.conv3(x, edge_index, edge_attr)
         x = torch.relu(x)
-        x = F.dropout(x, p = 0.5, training=self.training)        
-        
-        x = self.lin1(x)       
+        x = F.dropout(x, p = 0.5, training=self.training)
         
         return x
     
+class StockGAT(torch.nn.Module):
+
+    # A 3-layer GAT for node regression
+    
+    def __init__(self):
+        
+        super(StockGAT, self).__init__()
+
+        self.conv1 = GATConv(30, 64, heads = 4, concat = True, dropout = 0.5)
+        self.conv2 = GATConv(64*4, 64, heads = 4, concat = True, dropout = 0.5)
+        self.conv3 = GATConv(64*4, 1, heads = 4, concat = False, dropout = 0.5)        
+    
+    def forward(self, data):
+
+        x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
+
+        x = self.conv1(x, edge_index)
+        x = torch.relu(x)
+        x = F.dropout(x, p = 0.5, training=self.training)
+        
+        x = self.conv2(x, edge_index)
+        x = torch.relu(x)
+        x = F.dropout(x, p = 0.5, training=self.training)
+        
+        x = self.conv3(x, edge_index)
+
+        return x
+
 
 # Training StockGNN
 
-def train_gnn(model, optimizer, train_loader, test_loader, num_epochs):
+def train(model, optimizer, train_loader, test_loader, num_epochs):
 
     model.train()
     average_train_loss = []
@@ -135,16 +162,16 @@ def train_gnn(model, optimizer, train_loader, test_loader, num_epochs):
 
         average_loss = total_train_loss/len(train_loader)
         average_train_loss.append(average_loss)
-        val_mape = eval_gcn(model, test_loader)
-        average_test_mape.append(val_mape)
+        test_mape = eval(model, test_loader)
+        average_test_mape.append(test_mape)
         
         if epoch % 10 == 0:
-            print(f'Epoch {epoch:03d}, Train Loss: {average_loss:.4f}, Val MAPE: {val_mape:.4f}')
+            print(f'Epoch {epoch:03d}, Train Loss: {average_loss:.4f}, Val MAPE: {test_mape:.4f}')
 
     return average_train_loss, average_test_mape
 
 
-def eval_gcn(model, test_loader):
+def eval(model, test_loader):
 
     model.eval()
     total_mape = 0
@@ -157,8 +184,8 @@ def eval_gcn(model, test_loader):
 
             # Compute the Mean Absolute Percentage Error
 
-            mape = torch.mean(100 * torch.abs(out - data.y)/data.y).item()
+            mape = torch.mean(torch.abs((data.y - out) / (data.y + 1e-7)))
 
-            total_mape += mape
-
+            total_mape += mape.item()
+            
     return total_mape/len(test_loader)

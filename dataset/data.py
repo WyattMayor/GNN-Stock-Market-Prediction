@@ -26,6 +26,8 @@ import glob
 import os
 from tqdm import tqdm
 import networkx as nx
+from datetime import datetime
+from models.baselines import *
 
 class NASDAQDataset():
 
@@ -120,6 +122,8 @@ class NASDAQDataset():
                 start_idx = self.data[stock].index.get_loc(start_date)
                 G.nodes[stock]['history'] = self.data[stock]['Adj Close'].iloc[max(0, start_idx + 1 - 30):start_idx + 1].tolist() # Store closing values for last 30 days
                 G.nodes[stock]['target'] = self.data[stock]['Adj Close'].iloc[start_idx + 1] # Store the closing value for the next day        
+                G.nodes[stock]['linr_regr'] = linear_regression(np.arange(30).reshape(-1, 1), G.nodes[stock]['history'])
+
                 
             for i in range(len(self.filtered_stock_list)):
                 for j in range(i+1, len(self.filtered_stock_list)):
@@ -134,5 +138,4 @@ class NASDAQDataset():
             
             print(f"Graph for {start_date} already exists!")
             return nx.read_gml(filename)
-# %%
 
