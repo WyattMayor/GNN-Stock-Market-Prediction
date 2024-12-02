@@ -36,3 +36,5 @@ def holt_winters(y):
     predicted_hw = hw_model.forecast(1)  # Forecast the next value
 
     return predicted_hw
+
+

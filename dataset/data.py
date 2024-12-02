@@ -19,7 +19,7 @@ edge weights: correlation between the stocks + binary variable to indicate if a 
 to the same stock sector (optional).
 
 """
-# %%
+
 import pandas as pd
 import numpy as np
 import glob
@@ -29,6 +29,7 @@ import networkx as nx
 from datetime import datetime
 from models.baselines import *
 
+# %%
 class NASDAQDataset():
 
     def __init__(self, stocks_path, meta_path, nasdaq_100_path, start_date):
@@ -113,20 +114,24 @@ class NASDAQDataset():
         if not os.path.exists(filename):
             
             G = nx.Graph()
-            G.add_nodes_from(self.filtered_stock_list)
+            G.add_nodes_from(self.filtered_stock_list) 
             correlation_matrix, _ = self.compute_correlation_matrix(start_date)
-            threshold = 0.4
+            threshold = 0.98
             
             for stock in G.nodes:
                 
                 start_idx = self.data[stock].index.get_loc(start_date)
                 G.nodes[stock]['history'] = self.data[stock]['Adj Close'].iloc[max(0, start_idx + 1 - 30):start_idx + 1].tolist() # Store closing values for last 30 days
                 G.nodes[stock]['target'] = self.data[stock]['Adj Close'].iloc[start_idx + 1] # Store the closing value for the next day        
-                G.nodes[stock]['linr_regr'] = linear_regression(np.arange(30).reshape(-1, 1), G.nodes[stock]['history'])
+                G.nodes[stock]['linr_regr'] = float(linear_regression(np.arange(30).reshape(-1, 1), G.nodes[stock]['history']))
+                G.nodes[stock]['mov_avg'] = float(moving_average(G.nodes[stock]['history'], 5))
+                G.nodes[stock]['exp_smoothing'] = float(simple_exp_smoothing(G.nodes[stock]['history'], 0.3))
+                G.nodes[stock]['holt_winters'] = float(holt_winters(G.nodes[stock]['history']))
+                                  
 
                 
             for i in range(len(self.filtered_stock_list)):
-                for j in range(i+1, len(self.filtered_stock_list)):
+                for j in range(i, len(self.filtered_stock_list)):
                     if abs(correlation_matrix.iloc[i, j]) >= threshold: # Correlations can negative/positive; hence the absolute value
                         G.add_edge(self.filtered_stock_list[i], self.filtered_stock_list[j], weight = abs(correlation_matrix.iloc[i, j]))
         

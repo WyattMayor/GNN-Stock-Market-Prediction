@@ -32,9 +32,20 @@ def gnn_data_obj(data_list):
             for node in G.nodes:
                 x.append(list(G.nodes[node]['history']))
             
-            scaler = MinMaxScaler()
+            # scaler = MinMaxScaler()
+            # x = scaler.fit_transform(x)
+            # x = torch.tensor(x, dtype=torch.float)
 
-            x = scaler.fit_transform(x)
+            # Convert to NumPy array for normalization
+            
+            # x = np.array(x)
+
+            # # Z-score normalization per node
+            # mean = x.mean(axis=1, keepdims=True)  # Mean over time for each node
+            # std = x.std(axis=1, keepdims=True)    # Std over time for each node
+            # x = (x - mean) / (std + 1e-9)         # Avoid division by zero
+            
+            # # Convert back to PyTorch tensor
             
             x = torch.tensor(x, dtype=torch.float)
 
@@ -45,6 +56,7 @@ def gnn_data_obj(data_list):
             edge_attr = []
 
             for edge in G.edges:
+                
                 edge_index.append([list(G.nodes).index(edge[0]), list(G.nodes).index(edge[1])])
                 edge_attr.append(G.edges[edge]['weight'])
 
@@ -55,19 +67,38 @@ def gnn_data_obj(data_list):
             # STEP 3: CREATE TARGET TENSORS FOR THE NODES
 
             y = []
+            linr_regr = []
+            mov_avg = []
+            exp_smoothing = []
+            holt_winters = []
+
 
             for node in G.nodes:
+                
                 y.append(G.nodes[node]['target'])
+                linr_regr.append(G.nodes[node]['linr_regr'])
+                mov_avg.append(G.nodes[node]['mov_avg'])
+                exp_smoothing.append(G.nodes[node]['exp_smoothing'])
+                holt_winters.append(G.nodes[node]['holt_winters'])
+
 
             y = torch.tensor(y, dtype=torch.float)
+            linr_regr = torch.tensor(linr_regr, dtype=torch.float)
+            mov_avg = torch.tensor(mov_avg, dtype=torch.float)
+            exp_smoothing = torch.tensor(exp_smoothing, dtype=torch.float)
+            holt_winters = torch.tensor(holt_winters, dtype=torch.float)
 
             # Unsqueeze the target tensor
 
             y = y.unsqueeze(1)
+            linr_regr = linr_regr.unsqueeze(1)
+            mov_avg = mov_avg.unsqueeze(1)
+            exp_smoothing = exp_smoothing.unsqueeze(1)
+            holt_winters = holt_winters.unsqueeze(1)            
 
             # Store the graph in a PyG Data object
         
-            data = Data(x = x, edge_index = edge_index, edge_attr = edge_attr, y = y)
+            data = Data(x = x, edge_index = edge_index, edge_attr = edge_attr, y = y, linr_regr = linr_regr, mov_avg = mov_avg, exp_smoothing = exp_smoothing, holt_winters = holt_winters)
 
             data_obj_list.append(data)
 
@@ -111,9 +142,9 @@ class StockGAT(torch.nn.Module):
         
         super(StockGAT, self).__init__()
 
-        self.conv1 = GATConv(30, 64, heads = 4, concat = True, dropout = 0.5)
-        self.conv2 = GATConv(64*4, 64, heads = 4, concat = True, dropout = 0.5)
-        self.conv3 = GATConv(64*4, 1, heads = 4, concat = False, dropout = 0.5)        
+        self.conv1 = GATConv(30, 128, heads = 4, concat= False, dropout = 0.3)
+        self.conv2 = GATConv(128*4, 128, heads = 4, concat = False, dropout = 0.3)
+        self.conv3 = GATConv(128*4, 1, heads = 4, concat = False, dropout = 0.3)        
     
     def forward(self, data):
 
@@ -121,11 +152,11 @@ class StockGAT(torch.nn.Module):
 
         x = self.conv1(x, edge_index)
         x = torch.relu(x)
-        x = F.dropout(x, p = 0.5, training=self.training)
+        x = F.dropout(x, p = 0.3, training=self.training)
         
         x = self.conv2(x, edge_index)
         x = torch.relu(x)
-        x = F.dropout(x, p = 0.5, training=self.training)
+        x = F.dropout(x, p = 0.3, training=self.training)
         
         x = self.conv3(x, edge_index)
 
@@ -153,7 +184,9 @@ def train(model, optimizer, train_loader, test_loader, num_epochs):
 
             # Compute the Node Regression Loss
 
-            loss = F.l1_loss(out, data.y) # Mean Absolute Error
+            # loss = F.l1_loss(out, data.y) # Mean Absolute Error
+
+            loss = F.mse_loss(out, data.y) # Mean Squared Error
 
             loss.backward()
             optimizer.step()
