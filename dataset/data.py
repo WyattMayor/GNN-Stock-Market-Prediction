@@ -104,7 +104,7 @@ class NASDAQDataset():
         
         # Generates a graph for each day and stores it as a GML file
 
-        data_dir = '/Users/vivek/Documents/PhD/UIUC/Fall24/CS598/Project/GNN-Stock-Market-Prediction/dataset/graphs'
+        data_dir = 'dataset\\graphs'
         
         # Convert start_date to string
 

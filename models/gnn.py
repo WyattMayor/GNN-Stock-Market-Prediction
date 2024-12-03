@@ -3,8 +3,7 @@ import sys
 import os
 import torch
 from sklearn.preprocessing import MinMaxScaler
-from torch_geometric.nn import GCNConv
-from torch_geometric.nn import GATConv
+from torch_geometric.nn import GATConv, SAGEConv, GCNConv
 from torch_geometric.data import Data
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
@@ -162,7 +161,37 @@ class StockGAT(torch.nn.Module):
 
         return x
 
+class StockGraphSAGE(torch.nn.Module):
+    # A 3-layer GraphSAGE for node regression
+    
+    def __init__(self):
+        super(StockGraphSAGE, self).__init__()
+        
+        self.conv1 = SAGEConv(30, 128, aggr = 'mean')
+        self.conv2 = SAGEConv(128, 256, aggr = 'mean')
+        self.conv3 = SAGEConv(256, 256, aggr = 'mean')
+        self.conv4 = SAGEConv(256, 1, aggr = 'mean')
+    
+    def forward(self, data):
+        x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
+        x = x.to('cuda')
+        edge_index = edge_index.to('cuda')
+        edge_attr = edge_attr.to('cuda')
+        x = self.conv1(x, edge_index)
+        x = torch.relu(x)
+        x = F.dropout(x, p=0.3, training=self.training)
+        
+        x = self.conv2(x, edge_index)
+        x = torch.relu(x)
+        x = F.dropout(x, p=0.3, training=self.training)
 
+        x = self.conv3(x, edge_index)
+        x = torch.relu(x)
+        x = F.dropout(x, p=0.3, training=self.training)
+        
+        x = self.conv4(x, edge_index) # To ensure output is compatible with the target shape
+        
+        return x
 # Training StockGNN
 
 def train(model, optimizer, train_loader, test_loader, num_epochs):
@@ -179,9 +208,9 @@ def train(model, optimizer, train_loader, test_loader, num_epochs):
 
             # data.to(device)                
             optimizer.zero_grad()
-
+            data = data.to('cuda')
             out = model(data)
-
+            out = out.to('cuda')
             # Compute the Node Regression Loss
 
             # loss = F.l1_loss(out, data.y) # Mean Absolute Error
@@ -214,11 +243,13 @@ def eval(model, test_loader):
         for data in test_loader:
 
             out = model(data)
-
+            out = out.to('cuda')
             # Compute the Mean Absolute Percentage Error
-
+            data = data.to('cuda')
             mape = torch.mean(torch.abs((data.y - out) / (data.y + 1e-7)))
 
             total_mape += mape.item()
             
     return total_mape/len(test_loader)
+# %%
+
