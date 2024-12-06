@@ -111,9 +111,9 @@ class StockGCN(torch.nn.Module):
         
         super(StockGCN, self).__init__()
 
-        self.conv1 = GCNConv(30, 64)
-        self.conv2 = GCNConv(64, 64)
-        self.conv3 = GCNConv(64, 1)
+        self.conv1 = GCNConv(20, 64)
+        self.conv2 = GCNConv(64, 1)
+        # self.conv3 = GCNConv(64, 1)
     
     def forward(self, data):
 
@@ -124,12 +124,12 @@ class StockGCN(torch.nn.Module):
         x = F.dropout(x, p = 0.5, training=self.training)
         
         x = self.conv2(x, edge_index, edge_attr)
-        x = torch.relu(x)
-        x = F.dropout(x, p = 0.5, training=self.training)
+        # x = torch.relu(x)
+        # x = F.dropout(x, p = 0.5, training=self.training)
         
-        x = self.conv3(x, edge_index, edge_attr)
-        x = torch.relu(x)
-        x = F.dropout(x, p = 0.5, training=self.training)
+        # x = self.conv3(x, edge_index, edge_attr)
+        # x = torch.relu(x)
+        # x = F.dropout(x, p = 0.5, training=self.training)
         
         return x
     
@@ -167,31 +167,33 @@ class StockGraphSAGE(torch.nn.Module):
     def __init__(self):
         super(StockGraphSAGE, self).__init__()
         
-        self.conv1 = SAGEConv(30, 128, aggr = 'mean')
-        self.conv2 = SAGEConv(128, 256, aggr = 'mean')
-        self.conv3 = SAGEConv(256, 256, aggr = 'mean')
-        self.conv4 = SAGEConv(256, 1, aggr = 'mean')
+        self.conv1 = SAGEConv(20, 128, aggr = 'mean')
+        self.conv2 = SAGEConv(128, 1, aggr = 'mean')
+        # self.conv3 = SAGEConv(256, 256, aggr = 'mean')
+        # self.conv4 = SAGEConv(256, 1, aggr = 'mean')
     
     def forward(self, data):
+        
         x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
-        x = x.to('cuda')
-        edge_index = edge_index.to('cuda')
-        edge_attr = edge_attr.to('cuda')
+        # x = x.to('cuda')
+        # edge_index = edge_index.to('cuda')
+        # edge_attr = edge_attr.to('cuda')
         x = self.conv1(x, edge_index)
         x = torch.relu(x)
         x = F.dropout(x, p=0.3, training=self.training)
         
         x = self.conv2(x, edge_index)
-        x = torch.relu(x)
-        x = F.dropout(x, p=0.3, training=self.training)
+        # x = torch.relu(x)
+        # x = F.dropout(x, p=0.3, training=self.training)
 
-        x = self.conv3(x, edge_index)
-        x = torch.relu(x)
-        x = F.dropout(x, p=0.3, training=self.training)
+        # x = self.conv3(x, edge_index)
+        # x = torch.relu(x)
+        # x = F.dropout(x, p=0.3, training=self.training)
         
-        x = self.conv4(x, edge_index) # To ensure output is compatible with the target shape
+        # x = self.conv4(x, edge_index) # To ensure output is compatible with the target shape
         
         return x
+
 # Training StockGNN
 
 def train(model, optimizer, train_loader, test_loader, num_epochs):
@@ -199,18 +201,16 @@ def train(model, optimizer, train_loader, test_loader, num_epochs):
     model.train()
     average_train_loss = []
     average_test_mape = []
+    average_test_rmse = []
     
     for epoch in tqdm(range(num_epochs)):
         
         total_train_loss = 0
         
         for data in train_loader:
-
-            # data.to(device)                
+                
             optimizer.zero_grad()
-            data = data.to('cuda')
             out = model(data)
-            out = out.to('cuda')
             # Compute the Node Regression Loss
 
             # loss = F.l1_loss(out, data.y) # Mean Absolute Error
@@ -224,32 +224,42 @@ def train(model, optimizer, train_loader, test_loader, num_epochs):
 
         average_loss = total_train_loss/len(train_loader)
         average_train_loss.append(average_loss)
-        test_mape = eval(model, test_loader)
+        test_mape, test_rmse = eval(model, test_loader)
         average_test_mape.append(test_mape)
+        average_test_rmse.append(test_rmse)
         
-        if epoch % 10 == 0:
-            print(f'Epoch {epoch:03d}, Train Loss: {average_loss:.4f}, Val MAPE: {test_mape:.4f}')
+        if epoch % 5 == 0:
+            print(f'Epoch {epoch:03d}, Train Loss: {average_loss:.4f}, Test MAPE: {test_mape:.4f}, Test RMSE: {test_rmse:.4f}')
 
-    return average_train_loss, average_test_mape
+    return average_train_loss, average_test_mape, average_test_rmse
 
 
 def eval(model, test_loader):
 
     model.eval()
     total_mape = 0
+    total_rmse = 0
     
     with torch.no_grad():
 
         for data in test_loader:
 
             out = model(data)
-            out = out.to('cuda')
+            
             # Compute the Mean Absolute Percentage Error
-            data = data.to('cuda')
             mape = torch.mean(torch.abs((data.y - out) / (data.y + 1e-7)))
 
+            # Compute the Root Mean Square Error
+
+            rmse = torch.sqrt(F.mse_loss(out, data.y))
+
             total_mape += mape.item()
+
+            total_rmse += rmse.item()
+
+        mape_result = total_mape/len(test_loader)
+        rmse_result = total_rmse/len(test_loader)
             
-    return total_mape/len(test_loader)
+    return mape_result, rmse_result
 # %%
 

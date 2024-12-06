@@ -14,9 +14,8 @@ compute daily return, remove outliers, and normalize the data
 
 2) For every stock, based on the daily returns, compute pairwise correlations.
 
-3) Creating a graph object where node features: ADJUSTED closing values for last 30 days
-edge weights: correlation between the stocks + binary variable to indicate if a pair of nodes belong
-to the same stock sector (optional).
+3) Creating a graph object where node features: ADJUSTED closing values for last n days where n can be either 10, 20 or 30 days.
+Edge weights: correlation between the stocks + binary variable to indicate if a pair of nodes belong to the same stock sector (optional).
 
 """
 
@@ -82,16 +81,16 @@ class NASDAQDataset():
 
         self.filtered_stock_list = list(self.data.keys())
 
-    def compute_correlation_matrix(self, start_date):
+    def compute_correlation_matrix(self, start_date, window_size):
 
-        # Computes the correlation matrix for all stocks between start date and (start date - 30) days
+        # Computes the correlation matrix for all stocks between start date and (start date - window_size) days
 
         return_df = pd.DataFrame()
         
         for stock in self.filtered_stock_list:            
                 
             start_idx = self.data[stock].index.get_loc(start_date)
-            return_df[stock] = self.data[stock]['return'].iloc[max(0, start_idx - 30):start_idx] # Get return values for last 30 days
+            return_df[stock] = self.data[stock]['return'].iloc[max(0, start_idx - window_size):start_idx] # Get return values for last n days
 
         # Compute the correlations matrix
 
@@ -100,11 +99,11 @@ class NASDAQDataset():
         return correlation_matrix, return_df
 
     
-    def daily_graph_generator(self, start_date):
+    def daily_graph_generator(self, start_date, threshold, window_size):
         
         # Generates a graph for each day and stores it as a GML file
 
-        data_dir = 'dataset\\graphs'
+        data_dir = 'dataset/graphs'
         
         # Convert start_date to string
 
@@ -115,15 +114,14 @@ class NASDAQDataset():
             
             G = nx.Graph()
             G.add_nodes_from(self.filtered_stock_list) 
-            correlation_matrix, _ = self.compute_correlation_matrix(start_date)
-            threshold = 0.98
+            correlation_matrix, _ = self.compute_correlation_matrix(start_date, window_size)
             
             for stock in G.nodes:
                 
                 start_idx = self.data[stock].index.get_loc(start_date)
-                G.nodes[stock]['history'] = self.data[stock]['Adj Close'].iloc[max(0, start_idx + 1 - 30):start_idx + 1].tolist() # Store closing values for last 30 days
+                G.nodes[stock]['history'] = self.data[stock]['Adj Close'].iloc[max(0, start_idx + 1 - window_size):start_idx + 1].tolist() # Store closing values for last n days
                 G.nodes[stock]['target'] = self.data[stock]['Adj Close'].iloc[start_idx + 1] # Store the closing value for the next day        
-                G.nodes[stock]['linr_regr'] = float(linear_regression(np.arange(30).reshape(-1, 1), G.nodes[stock]['history']))
+                G.nodes[stock]['linr_regr'] = float(linear_regression(np.arange(window_size).reshape(-1, 1), G.nodes[stock]['history'], window_size))
                 G.nodes[stock]['mov_avg'] = float(moving_average(G.nodes[stock]['history'], 5))
                 G.nodes[stock]['exp_smoothing'] = float(simple_exp_smoothing(G.nodes[stock]['history'], 0.3))
                 G.nodes[stock]['holt_winters'] = float(holt_winters(G.nodes[stock]['history']))
